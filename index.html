@@ -25,7 +25,6 @@
   --badge-partial-bg: #b87500;
   --badge-pass-bg: #1a7f3a;
   --badge-fail-bg: #a61e1e;
-  --badge-none-bg: #555;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
@@ -76,7 +75,7 @@ button.secondary[disabled] { color: #aaa; border-color: #ccc; cursor: not-allowe
 .tier-pass    { background: var(--badge-pass-bg); }
 .tier-partial { background: var(--badge-partial-bg); }
 .tier-fail    { background: var(--badge-fail-bg); }
-.tier-none    { background: var(--badge-none-bg); }
+.tier-summary { color: #333; font-size: 1.1rem; line-height: 1.5; margin: 0.6rem 0 0.25rem; }
 .tier-sub { color: var(--fg-dim); font-size: 0.9rem; margin-top: 0.4rem; }
 .checks { list-style: none; padding: 0; margin: 0.5rem 0 0; }
 .checks li { padding: 0.25rem 0; border-bottom: 1px solid #f0f0f0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; }
@@ -980,7 +979,7 @@ section.limits li { margin-bottom: 0.5rem; }
 
     var strict = [];
     var tier = "none";
-    var tierBadge = { label: "None", variant: "none" };
+    var tierBadge = { label: "None", variant: "fail" };
 
     if (schemaOk && minimalOk && !standardOk) {
       tier = "minimal"; tierBadge = { label: "Minimal", variant: "pass" };
@@ -1052,7 +1051,7 @@ section.limits li { margin-bottom: 0.5rem; }
       }
     }
 
-    if (!schemaOk) { tier = "none"; tierBadge = { label: "None", variant: "none" }; }
+    if (!schemaOk) { tier = "none"; tierBadge = { label: "None", variant: "fail" }; }
 
     var warnings = [];
     if (schemaOk && m5ok && days !== null && days > 180 && days <= 365) {
@@ -1285,7 +1284,7 @@ section.limits li { margin-bottom: 0.5rem; }
       source: source, mode: mode, jsonParseOk: false, parseError: null,
       schemaErrors: [], checks: { minimal: [], standard: [], strict: [] },
       warnings: [], confidenceInfo: [], signatureReport: { document_level: "absent", per_claim: [] },
-      tier: "none", tierBadge: { label: "None", variant: "none" }
+      tier: "none", tierBadge: { label: "None", variant: "fail" }
     };
   }
 
@@ -1349,11 +1348,74 @@ section.limits li { margin-bottom: 0.5rem; }
     return ul;
   }
 
-  function tierExplanation(tierKey) {
-    if (tierKey === "strict-paste" || tierKey === "strict-partial-cors") {
-      return "The document passes every Strict-tier check that does not require a live server fetch. X2 and X3 (JWKS retrievability and Cache-Control) could not be evaluated in this mode.";
+  function firstFailingReason(checks, map) {
+    if (!checks) return null;
+    for (var i = 0; i < checks.length; i++) {
+      var c = checks[i];
+      if (c.status === "FAIL" && map[c.id]) return map[c.id];
     }
     return null;
+  }
+
+  var STRICT_REASONS = {
+    X1: "the document-level signature is absent or structurally invalid",
+    X4: "no canonical_urls claim has a URL on the entity's owned domain"
+  };
+  var STANDARD_REASONS = {
+    S1: "no canonical_urls claim is present",
+    S2: "no official_channels claim is present",
+    S3: "entity.primary_domain does not match the serving domain",
+    S4: "one or more claim URLs do not resolve to the entity's owned domain or an explicit third-party pointer",
+    S5: "the validity window exceeds the 180-day Standard-tier threshold"
+  };
+  var MINIMAL_REASONS = {
+    M3: "the input does not conform to the LLMO v0.1 schema",
+    M4: 'llmo_version is not "0.1"',
+    M5: "the validity window is malformed or exceeds 365 days",
+    M6: "one or more claims is missing type or statement"
+  };
+
+  function parseErrorShortReason(label) {
+    if (!label) return "The input could not be processed.";
+    if (label.indexOf("parse error") >= 0) return "The input is not valid JSON.";
+    if (label.indexOf("(404)") >= 0) return "The document was not found at the expected URL.";
+    if (label.indexOf("HTTPS required") >= 0) return "The URL must use HTTPS.";
+    if (label.indexOf("invalid URL") >= 0) return "The input is not a valid URL.";
+    if (label.indexOf("HTML response") >= 0) return "The server returned HTML rather than JSON.";
+    if (label.indexOf("network or CORS") >= 0) return "The fetch failed due to network error or CORS restriction.";
+    if (/\(HTTP \d+\)/.test(label)) return "The server returned an error HTTP status.";
+    return "The input could not be processed.";
+  }
+
+  function buildSummaryLine(result) {
+    var tier = result.tier;
+    if (tier === "strict") return "This document meets Strict conformance.";
+    if (tier === "strict-paste") {
+      return "The document passes every Strict-tier check that does not require a live server fetch. X2 and X3 (JWKS retrievability and Cache-Control) could not be evaluated in this mode.";
+    }
+    if (tier === "strict-partial-cors") {
+      return "The document passes every Strict-tier check that could be evaluated. X2 and X3 could not be evaluated because the JWKS URL did not permit cross-origin requests from validate.llmo.org.";
+    }
+    if (tier === "standard") {
+      var reason = firstFailingReason(result.checks && result.checks.strict, STRICT_REASONS) || "a Strict-tier check failed";
+      return "This document meets Standard conformance. It does not meet Strict because " + reason + ".";
+    }
+    if (tier === "minimal") {
+      var reason = firstFailingReason(result.checks && result.checks.standard, STANDARD_REASONS) || "a Standard-tier check failed";
+      return "This document meets Minimal conformance. It does not meet Standard because " + reason + ".";
+    }
+    // tier === "none"
+    if (!result.jsonParseOk) {
+      return "This document does not meet any conformance tier. " + parseErrorShortReason(result.tierBadge && result.tierBadge.label);
+    }
+    if (result.schemaErrors && result.schemaErrors.length > 0) {
+      return "This document does not meet any conformance tier. The input does not conform to the LLMO v0.1 schema.";
+    }
+    var reason = firstFailingReason(result.checks && result.checks.minimal, MINIMAL_REASONS);
+    if (reason) {
+      return "This document does not meet any conformance tier. " + reason.charAt(0).toUpperCase() + reason.slice(1) + ".";
+    }
+    return "This document does not meet any conformance tier.";
   }
 
   function render(result) {
@@ -1369,8 +1431,8 @@ section.limits li { margin-bottom: 0.5rem; }
       text: result.tierBadge.label
     });
     badgeWrap.appendChild(badge);
-    var sub = tierExplanation(result.tier);
-    if (sub) badgeWrap.appendChild(el("div", { cls: "tier-sub", text: sub }));
+    var summary = buildSummaryLine(result);
+    if (summary) badgeWrap.appendChild(el("p", { cls: "tier-summary", text: summary }));
     badgeWrap.appendChild(el("div", { cls: "tier-sub", text: "Source: " + result.source }));
     body.appendChild(badgeWrap);
 
