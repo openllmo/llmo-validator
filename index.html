@@ -1,0 +1,1540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Reference validator for LLMO specification documents. Checks llmo.json conformance against the v0.1 JSON Schema and §5.1 through §5.3 tier rules.">
+<title>LLMO Validator</title>
+<style>
+/* System sans stack. Light mode. Max-width content column. */
+:root {
+  --fg: #1a1a1a;
+  --fg-dim: #555;
+  --fg-faint: #888;
+  --bg: #ffffff;
+  --bg-soft: #fafafa;
+  --bg-panel: #f4f4f4;
+  --border: #e2e2e2;
+  --border-strong: #cfcfcf;
+  --accent: #1a1a1a;
+  --link: #0b5bb5;
+  --pass: #1a7f3a;
+  --fail: #a61e1e;
+  --warn: #b87500;
+  --skip: #666;
+  --badge-partial-bg: #b87500;
+  --badge-pass-bg: #1a7f3a;
+  --badge-fail-bg: #a61e1e;
+  --badge-none-bg: #555;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--fg);
+  background: var(--bg);
+}
+main { max-width: 800px; margin: 0 auto; padding: 2rem 1.25rem 3rem; }
+h1 { font-size: 1.75rem; margin: 0 0 0.25rem; }
+h2 { font-size: 1.15rem; margin: 2rem 0 0.5rem; border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+h3 { font-size: 1rem; margin: 1rem 0 0.5rem; }
+p { margin: 0 0 0.75rem; }
+a { color: var(--link); }
+code, pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.875rem;
+}
+code { background: var(--bg-panel); padding: 0.05rem 0.3rem; border-radius: 0.2rem; }
+header .subtitle { color: var(--fg-dim); margin: 0 0 1.25rem; }
+.panel { background: var(--bg-soft); border: 1px solid var(--border); border-radius: 0.375rem; padding: 1rem; margin: 1rem 0; }
+.panel-tight { padding: 0.75rem 1rem; }
+.modebar { display: flex; gap: 0.5rem; margin-bottom: 0.75rem; }
+.mode-btn { font: inherit; padding: 0.4rem 0.9rem; border: 1px solid var(--accent); background: #fff; color: var(--accent); border-radius: 0.25rem; cursor: pointer; font-weight: 600; }
+.mode-btn[aria-selected="true"] { background: var(--accent); color: #fff; }
+label { display: block; font-weight: 600; font-size: 0.9rem; margin-bottom: 0.25rem; }
+textarea, input[type="text"] {
+  width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.25rem;
+  background: #fff;
+  color: var(--fg);
+}
+textarea { resize: vertical; min-height: 14rem; }
+.btnrow { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.5rem; }
+button.primary { font: inherit; padding: 0.5rem 1rem; background: var(--accent); color: #fff; border: 0; border-radius: 0.25rem; cursor: pointer; font-weight: 600; }
+button.primary[disabled] { background: #aaa; cursor: not-allowed; }
+button.secondary { font: inherit; padding: 0.5rem 1rem; background: #fff; color: var(--accent); border: 1px solid var(--accent); border-radius: 0.25rem; cursor: pointer; font-weight: 600; }
+button.secondary[disabled] { color: #aaa; border-color: #ccc; cursor: not-allowed; }
+.confirm-banner { background: #fff8e1; border: 1px solid var(--warn); padding: 0.6rem 0.75rem; border-radius: 0.25rem; margin: 0.5rem 0; color: #5a3800; }
+.confirm-banner .btnrow { margin-top: 0.5rem; }
+.tier-badge { display: inline-block; padding: 0.6rem 1.1rem; border-radius: 0.375rem; font-weight: 700; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 1rem; color: #fff; }
+.tier-pass    { background: var(--badge-pass-bg); }
+.tier-partial { background: var(--badge-partial-bg); }
+.tier-fail    { background: var(--badge-fail-bg); }
+.tier-none    { background: var(--badge-none-bg); }
+.tier-sub { color: var(--fg-dim); font-size: 0.9rem; margin-top: 0.4rem; }
+.checks { list-style: none; padding: 0; margin: 0.5rem 0 0; }
+.checks li { padding: 0.25rem 0; border-bottom: 1px solid #f0f0f0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; }
+.checks li:last-child { border-bottom: 0; }
+.mark { display: inline-block; width: 1.25rem; font-weight: 700; }
+.mark-pass { color: var(--pass); }
+.mark-fail { color: var(--fail); }
+.mark-skip { color: var(--skip); }
+.mark-warn { color: var(--warn); }
+.cite { color: var(--fg-dim); }
+.note { margin-left: 1.75rem; color: var(--fg-dim); font-size: 0.8125rem; }
+.errbox { background: #fef2f2; border: 1px solid var(--fail); color: #5a0b0b; padding: 0.75rem; border-radius: 0.25rem; white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; }
+pre.report { background: #111; color: #eaeaea; padding: 0.85rem; border-radius: 0.25rem; overflow-x: auto; font-size: 0.8125rem; line-height: 1.45; white-space: pre; }
+.copyrow { display: flex; gap: 0.75rem; align-items: center; margin: 0.35rem 0 0.75rem; }
+.copy-status { font-size: 0.85rem; color: var(--fg-dim); }
+footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid var(--border); color: var(--fg-dim); font-size: 0.875rem; }
+footer .links { margin-top: 0.3rem; }
+footer .links a { margin-right: 0.75rem; }
+.inittip { margin-top: 0.5rem; color: var(--fg-dim); font-size: 0.85rem; }
+.hidden { display: none; }
+.muted { color: var(--fg-dim); }
+ul.plain { list-style: none; padding: 0; margin: 0.3rem 0 0; }
+ul.plain li { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.875rem; padding: 0.15rem 0; }
+section.limits ol { padding-left: 1.25rem; margin: 0.3rem 0 0; }
+section.limits li { margin-bottom: 0.5rem; }
+</style>
+</head>
+<body>
+<main>
+
+<header>
+  <h1>LLMO Validator</h1>
+  <p class="subtitle">Reference validator for the LLMO specification.</p>
+</header>
+
+<p>This page is the reference validator for <code>llmo.json</code> documents. It checks a document against the published <a href="https://llmo.org/spec/v0.1/schema.json">JSON Schema</a> and reports which conformance tier the document achieves (Minimal, Standard, Strict) per <a href="https://llmo.org/spec/v0.1#5-conformance-levels">§5.1</a> through <a href="https://llmo.org/spec/v0.1#5-3-strict-conformance">§5.3</a> of the <a href="https://llmo.org/spec/v0.1">LLMO specification</a>.</p>
+
+<p>The validator runs entirely in your browser. Nothing is uploaded.</p>
+
+<section aria-labelledby="input-heading">
+<h2 id="input-heading">Input</h2>
+
+<div class="modebar" role="tablist" aria-label="Input mode">
+  <button type="button" class="mode-btn" id="tab-paste" role="tab" aria-selected="true" aria-controls="panel-paste">Paste mode</button>
+  <button type="button" class="mode-btn" id="tab-url" role="tab" aria-selected="false" aria-controls="panel-url">URL mode</button>
+</div>
+
+<div class="panel" id="panel-paste" role="tabpanel" aria-labelledby="tab-paste">
+  <label for="paste-input">Paste the contents of your <code>llmo.json</code></label>
+  <textarea id="paste-input" spellcheck="false" autocomplete="off" placeholder='{"llmo_version":"0.1","entity":{},...}'></textarea>
+  <div class="btnrow">
+    <button type="button" class="primary" id="btn-validate-paste" disabled>Loading validator...</button>
+    <button type="button" class="secondary" id="btn-load-self-test">Load strict test vector</button>
+  </div>
+  <p class="inittip" id="init-status">Loading AJV from esm.sh...</p>
+</div>
+
+<div class="panel hidden" id="panel-url" role="tabpanel" aria-labelledby="tab-url" hidden>
+  <label for="url-input">Domain to validate (will fetch <code>https://&lt;domain&gt;/.well-known/llmo.json</code>)</label>
+  <input type="text" id="url-input" placeholder="example.com" autocomplete="off">
+  <div id="url-confirm" class="confirm-banner hidden" hidden>
+    <span id="url-confirm-msg"></span>
+    <div class="btnrow">
+      <button type="button" class="primary" id="btn-url-confirm-yes">Yes, use https://...</button>
+      <button type="button" class="secondary" id="btn-url-confirm-no">Cancel</button>
+    </div>
+  </div>
+  <div class="btnrow">
+    <button type="button" class="primary" id="btn-validate-url" disabled>Loading validator...</button>
+  </div>
+</div>
+
+</section>
+
+<section aria-labelledby="results-heading" id="results-section" class="hidden" hidden>
+<h2 id="results-heading">Results</h2>
+
+<div id="results-body"></div>
+</section>
+
+<section aria-labelledby="selftest-heading">
+<h2 id="selftest-heading">Self-test: strict conformance test vector</h2>
+<p>Click <strong>Load strict test vector</strong> above to populate the textarea with the strict test vector from <a href="https://llmo.org/spec/v0.1/test-vectors/signed-strict.json"><code>/spec/v0.1/test-vectors/signed-strict.json</code></a>, then click <strong>Validate</strong>. Expected: an amber <strong>Strict (partial, paste mode)</strong> badge. Every document-internal Strict-tier check (X1 signature shape, X4 domain-ownership) passes; the two URL-mode-only checks (X2 JWKS retrievability, X3 Cache-Control) are skipped because paste mode cannot fetch the JWKS. Any lower tier is a regression.</p>
+<p>The strict test vector is embedded in this page as a <code>&lt;script type="application/json"&gt;</code> block (CORS on <code>llmo.org/spec/v0.1/*</code> prevents a live fetch from this origin). See <a href="https://github.com/openllmo/llmo-validator/blob/main/README.md">README</a> for the update workflow.</p>
+</section>
+
+<section aria-labelledby="limits-heading" class="limits">
+<h2 id="limits-heading">Current limitations and future work</h2>
+<ol>
+  <li><strong>Signature verification is not performed by this tool in v0.1</strong> due to cross-origin constraints on fetching external JWKS from client JavaScript. Implementers verify signatures using the procedure in <a href="https://llmo.org/spec/v0.1#4-trust-model">§4</a> and the JWS signing-input reference at <a href="https://llmo.org/spec/v0.1/test-vectors/signed-strict-payload.json"><code>/spec/v0.1/test-vectors/signed-strict-payload.json</code></a>.</li>
+  <li><strong>URL-mode validation depends on the target domain permitting cross-origin requests.</strong> Most domains do not. Paste mode is the reliable path.</li>
+  <li><strong>A server-side validator built as a self-hostable service</strong> (for example, on Cloudflare workerd or an equivalent open runtime) is a reasonable future project. It would unblock signature verification, remove the CORS dependency, and allow headers like <code>Cache-Control</code> on the JWKS response to be observed directly. Out of scope for this version.</li>
+</ol>
+</section>
+
+<footer>
+  <div id="footer-version">Validator <span id="footer-v"></span> (<span id="footer-sha"></span>) · built <span id="footer-build"></span></div>
+  <div class="links">
+    <a href="https://llmo.org/spec/v0.1">Spec</a>
+    <a href="https://llmo.org/spec/v0.1/schema.json">Schema</a>
+    <a href="https://llmo.org/spec/v0.1/test-vectors">Test vectors</a>
+    <a href="https://github.com/openllmo/llmo-validator">GitHub</a>
+  </div>
+  <div class="muted" style="margin-top:0.3rem;">Open source under MIT. © 2026 Diverse.org.</div>
+</footer>
+
+</main>
+
+<!-- Embedded from https://llmo.org/spec/v0.1/schema.json on 2026-04-20.
+     SHA-256: 3987caa1f75980266633166a6d96cdb13bc08c81f9a418f1158892c34f8d2cb2.
+     Must be re-embedded whenever the schema changes in the spec repo. -->
+<script type="application/json" id="llmo-schema">
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://llmo.org/spec/v0.1/schema.json",
+  "title": "LLMO Document v0.1",
+  "description": "Schema for llmo.json documents conforming to LLMO Specification v0.1.",
+  "type": "object",
+  "required": [
+    "llmo_version",
+    "entity",
+    "claims",
+    "valid_from",
+    "valid_until",
+    "document_id"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "llmo_version": {
+      "type": "string",
+      "description": "Spec version this document conforms to.",
+      "const": "0.1"
+    },
+    "document_id": {
+      "type": "string",
+      "description": "Stable opaque identifier for this document, unique within the entity.",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9._:-]+$"
+    },
+    "valid_from": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 timestamp. The document is authoritative from this moment."
+    },
+    "valid_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 timestamp. The document is stale after this moment. Must be at most 365 days after valid_from."
+    },
+    "supersedes": {
+      "type": "array",
+      "description": "Document IDs of prior llmo.json documents on the same domain that this document supersedes.",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[A-Za-z0-9._:-]+$"
+      },
+      "uniqueItems": true
+    },
+    "entity": {
+      "$ref": "#/$defs/entity"
+    },
+    "claims": {
+      "type": "array",
+      "description": "Ordered array of claim objects. May be empty but must be present.",
+      "items": {
+        "$ref": "#/$defs/claim"
+      }
+    },
+    "signature": {
+      "$ref": "#/$defs/signature"
+    }
+  },
+  "$defs": {
+    "entity": {
+      "type": "object",
+      "required": ["name", "primary_domain"],
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "Human-readable entity name.",
+          "minLength": 1,
+          "maxLength": 512
+        },
+        "primary_domain": {
+          "type": "string",
+          "description": "The registrable domain at which this llmo.json is authoritative.",
+          "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$"
+        },
+        "aliases": {
+          "type": "array",
+          "description": "Other domains owned by the entity.",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$"
+          },
+          "uniqueItems": true
+        },
+        "legal_identifiers": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "jurisdiction": {
+              "type": "string",
+              "description": "ISO 3166 country or subdivision code."
+            },
+            "registration_number": {
+              "type": "string"
+            }
+          }
+        },
+        "external_ids": {
+          "type": "object",
+          "description": "Pointers into external identity systems. Keys are system names; values are identifiers.",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "properties": {
+            "wikidata": {
+              "type": "string",
+              "pattern": "^Q[0-9]+$"
+            },
+            "duns": {
+              "type": "string",
+              "pattern": "^[0-9]{9}$"
+            },
+            "lei": {
+              "type": "string",
+              "pattern": "^[A-Z0-9]{20}$"
+            },
+            "did": {
+              "type": "string",
+              "pattern": "^did:[a-z0-9]+:.+$"
+            }
+          }
+        }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "required": ["type", "statement"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Core claim type (no dots) or namespaced extension type (contains dots).",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
+        },
+        "statement": {
+          "type": "object",
+          "description": "Type-specific payload."
+        },
+        "asserted_at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": ["authoritative", "advisory", "provisional"],
+          "default": "authoritative"
+        },
+        "claim_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "signature": {
+          "$ref": "#/$defs/signature"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "canonical_urls" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_canonical_urls" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "official_channels" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_official_channels" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "product_facts" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_product_facts" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "personnel" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_personnel" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "disavowal" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_disavowal" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "supersedes" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_supersedes" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "pointer" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_pointer" }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "identity" } }
+          },
+          "then": {
+            "properties": {
+              "statement": { "$ref": "#/$defs/statement_identity" }
+            }
+          }
+        }
+      ]
+    },
+    "statement_identity": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "founded": {
+          "type": "string",
+          "description": "RFC 3339 date, year, or year-month."
+        },
+        "headquarters": { "type": "string" },
+        "description": { "type": "string", "maxLength": 2048 }
+      }
+    },
+    "statement_canonical_urls": {
+      "type": "object",
+      "additionalProperties": { "type": "string", "format": "uri" },
+      "properties": {
+        "homepage": { "type": "string", "format": "uri" },
+        "docs": { "type": "string", "format": "uri" },
+        "api": { "type": "string", "format": "uri" },
+        "status": { "type": "string", "format": "uri" },
+        "support": { "type": "string", "format": "uri" },
+        "pricing": { "type": "string", "format": "uri" },
+        "security": { "type": "string", "format": "uri" },
+        "agent_manifest": { "type": "string", "format": "uri" },
+        "mcp_manifest": { "type": "string", "format": "uri" }
+      }
+    },
+    "statement_official_channels": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "email_domains": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\\.)+[a-z]{2,}$"
+          },
+          "uniqueItems": true
+        },
+        "social": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "community": {
+          "type": "object",
+          "additionalProperties": { "type": "string", "format": "uri" }
+        }
+      }
+    },
+    "statement_product_facts": {
+      "type": "object",
+      "required": ["products"],
+      "properties": {
+        "products": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "additionalProperties": true,
+            "properties": {
+              "name": { "type": "string" },
+              "url": { "type": "string", "format": "uri" },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "generally_available",
+                  "beta",
+                  "alpha",
+                  "preview",
+                  "deprecated",
+                  "end_of_life"
+                ]
+              },
+              "current_version": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "statement_personnel": {
+      "type": "object",
+      "required": ["spokespeople"],
+      "properties": {
+        "spokespeople": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["role", "name"],
+            "additionalProperties": true,
+            "properties": {
+              "role": { "type": "string" },
+              "name": { "type": "string" },
+              "verification": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      }
+    },
+    "statement_disavowal": {
+      "type": "object",
+      "required": ["disavowed"],
+      "properties": {
+        "disavowed": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["what", "detail"],
+            "additionalProperties": true,
+            "properties": {
+              "what": { "type": "string" },
+              "detail": { "type": "string", "maxLength": 2048 },
+              "url": { "type": "string", "format": "uri" }
+            }
+          }
+        }
+      }
+    },
+    "statement_supersedes": {
+      "type": "object",
+      "required": ["superseded"],
+      "properties": {
+        "superseded": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["what", "reason"],
+            "additionalProperties": true,
+            "properties": {
+              "what": { "type": "string" },
+              "url": { "type": "string", "format": "uri" },
+              "reason": { "type": "string", "maxLength": 2048 }
+            }
+          }
+        }
+      }
+    },
+    "statement_pointer": {
+      "type": "object",
+      "required": ["scope", "url"],
+      "additionalProperties": true,
+      "properties": {
+        "scope": { "type": "string" },
+        "standard": { "type": "string" },
+        "url": { "type": "string", "format": "uri" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "description": "JWS signature over the enclosing object (document or claim) with its own signature field removed, canonicalized per RFC 8785 (JCS).",
+      "required": ["protected", "signature"],
+      "additionalProperties": false,
+      "properties": {
+        "protected": {
+          "type": "string",
+          "description": "Base64url-encoded JWS protected header. MUST include alg (ES256, ES384, or EdDSA) and kid.",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        },
+        "signature": {
+          "type": "string",
+          "description": "Base64url-encoded signature bytes.",
+          "pattern": "^[A-Za-z0-9_-]+$"
+        }
+      }
+    }
+  }
+}
+</script>
+
+<!-- Embedded from https://llmo.org/spec/v0.1/test-vectors/signed-strict.json on 2026-04-20.
+     SHA-256: 717df78fb273a321d0f319ff1243875d197ea20dd12f1f923c109c6d03a7a3e1.
+     Must be re-embedded whenever the strict test vector changes in the spec repo. -->
+<script type="application/json" id="llmo-strict-vector">
+{
+  "llmo_version": "0.1",
+  "document_id": "test-vector-v0.1-strict-001",
+  "valid_from": "2026-04-20T00:00:00Z",
+  "valid_until": "2026-10-17T00:00:00Z",
+  "entity": {
+    "name": "JungleCat, Inc.",
+    "primary_domain": "junglecat.example.com"
+  },
+  "claims": [
+    {
+      "claim_id": "urls-canonical",
+      "type": "canonical_urls",
+      "statement": {
+        "homepage": "https://junglecat.example.com/",
+        "security": "https://junglecat.example.com/security"
+      }
+    },
+    {
+      "claim_id": "channels-official",
+      "type": "official_channels",
+      "statement": {
+        "email_domains": [
+          "junglecat.example.com"
+        ]
+      }
+    }
+  ],
+  "signature": {
+    "protected": "eyJhbGciOiJFUzI1NiIsImtpZCI6Imk0WDV3QWhYZjl0dWY1cm56Q0lSY0U5UmhLYy1RREZDSWJWYmduRUJmZVUifQ",
+    "signature": "jnTRhvzJq2KHJl7iTtACDUKjYTPTLQXztpPfwPAGGltaiXX3pNq8CkEUVccs1dUBrPjUYFsv7kJaB05zmxykww"
+  }
+}
+</script>
+
+<script>
+(function () {
+  "use strict";
+
+  // Build-time constants. COMMIT_SHA is replaced by the Pages build step.
+  const VERSION = "v0.1.0";
+  const BUILD_DATE = "2026-04-20";
+  const COMMIT_SHA = "DEV";
+
+  var B64URL = /^[A-Za-z0-9_-]+$/;
+  var ALLOWED_ALGS = ["ES256", "ES384", "EdDSA"];
+  var WELL_KNOWN = "/.well-known/llmo.json";
+
+  var schema = null;
+  var strictVectorText = null;
+  var ajvValidate = null;
+
+  document.addEventListener("DOMContentLoaded", function () {
+    fillFooter();
+    readEmbeds();
+    wireTabs();
+    wireButtons();
+    initAjv().then(function () {
+      setReady();
+    }).catch(function (err) {
+      setInitError(err);
+    });
+  });
+
+  function fillFooter() {
+    document.getElementById("footer-v").textContent = VERSION;
+    document.getElementById("footer-sha").textContent = COMMIT_SHA;
+    document.getElementById("footer-build").textContent = BUILD_DATE;
+  }
+
+  function readEmbeds() {
+    try {
+      schema = JSON.parse(document.getElementById("llmo-schema").textContent);
+    } catch (e) {
+      throw new Error("embedded schema failed to parse: " + e.message);
+    }
+    strictVectorText = document.getElementById("llmo-strict-vector").textContent.trim();
+    try {
+      JSON.parse(strictVectorText);
+    } catch (e) {
+      throw new Error("embedded strict test vector failed to parse: " + e.message);
+    }
+  }
+
+  function wireTabs() {
+    var tabPaste = document.getElementById("tab-paste");
+    var tabUrl = document.getElementById("tab-url");
+    var panelPaste = document.getElementById("panel-paste");
+    var panelUrl = document.getElementById("panel-url");
+    function show(mode) {
+      var paste = mode === "paste";
+      tabPaste.setAttribute("aria-selected", paste ? "true" : "false");
+      tabUrl.setAttribute("aria-selected", paste ? "false" : "true");
+      panelPaste.classList.toggle("hidden", !paste);
+      panelUrl.classList.toggle("hidden", paste);
+      panelPaste.hidden = !paste;
+      panelUrl.hidden = paste;
+    }
+    tabPaste.addEventListener("click", function () { show("paste"); });
+    tabUrl.addEventListener("click", function () { show("url"); });
+  }
+
+  function wireButtons() {
+    document.getElementById("btn-load-self-test").addEventListener("click", function () {
+      var ta = document.getElementById("paste-input");
+      try {
+        var parsed = JSON.parse(strictVectorText);
+        ta.value = JSON.stringify(parsed, null, 2);
+      } catch (_e) {
+        ta.value = strictVectorText;
+      }
+    });
+    document.getElementById("btn-validate-paste").addEventListener("click", function () {
+      runPasteValidation(document.getElementById("paste-input").value);
+    });
+    document.getElementById("btn-validate-url").addEventListener("click", function () {
+      runUrlValidation(document.getElementById("url-input").value.trim());
+    });
+    document.getElementById("btn-url-confirm-no").addEventListener("click", function () {
+      hideUrlConfirm();
+    });
+  }
+
+  function setReady() {
+    document.getElementById("btn-validate-paste").disabled = false;
+    document.getElementById("btn-validate-paste").textContent = "Validate";
+    document.getElementById("btn-validate-url").disabled = false;
+    document.getElementById("btn-validate-url").textContent = "Fetch and validate";
+    var tip = document.getElementById("init-status");
+    if (tip) tip.textContent = "";
+  }
+
+  function setInitError(err) {
+    var section = document.getElementById("results-section");
+    section.classList.remove("hidden"); section.hidden = false;
+    var body = document.getElementById("results-body");
+    body.innerHTML = "";
+    var div = document.createElement("div");
+    div.className = "errbox";
+    var msg = (err && err.message) ? err.message : String(err);
+    div.textContent =
+      "Validator initialization failed. This is a bug; please file an issue at " +
+      "https://github.com/openllmo/llmo-validator/issues. No validation will be performed.\n\n" +
+      "Detail: " + msg;
+    body.appendChild(div);
+    document.getElementById("btn-validate-paste").disabled = true;
+    document.getElementById("btn-validate-paste").textContent = "Unavailable";
+    document.getElementById("btn-validate-url").disabled = true;
+    document.getElementById("btn-validate-url").textContent = "Unavailable";
+    var tip = document.getElementById("init-status");
+    if (tip) tip.textContent = "Initialization failed.";
+  }
+
+  function loadAjvDynamic() {
+    return Promise.all([
+      import("https://esm.sh/ajv@8/dist/2020.js"),
+      import("https://esm.sh/ajv-formats@3")
+    ]).then(function (mods) { return { ajvMod: mods[0], formatsMod: mods[1] }; });
+  }
+
+  function loadAjvViaScriptTag() {
+    return new Promise(function (resolve, reject) {
+      if (typeof document === "undefined") { reject(new Error("document is not available")); return; }
+      if (window.__llmo_validator_ajv) { resolve(window.__llmo_validator_ajv); return; }
+      var s = document.createElement("script");
+      s.type = "module";
+      s.textContent =
+        "(async () => {\n" +
+        "  try {\n" +
+        "    const [ajvMod, formatsMod] = await Promise.all([\n" +
+        "      import('https://esm.sh/ajv@8/dist/2020.js'),\n" +
+        "      import('https://esm.sh/ajv-formats@3')\n" +
+        "    ]);\n" +
+        "    window.__llmo_validator_ajv = { ajvMod, formatsMod };\n" +
+        "    window.dispatchEvent(new CustomEvent('__llmo_validator_ajv_ready'));\n" +
+        "  } catch (err) {\n" +
+        "    window.__llmo_validator_ajv_err = err;\n" +
+        "    window.dispatchEvent(new CustomEvent('__llmo_validator_ajv_failed', { detail: err }));\n" +
+        "  }\n" +
+        "})();";
+      var settled = false;
+      function done(fn, arg) {
+        if (settled) return; settled = true;
+        window.removeEventListener("__llmo_validator_ajv_ready", onReady);
+        window.removeEventListener("__llmo_validator_ajv_failed", onFailed);
+        fn(arg);
+      }
+      function onReady() { done(resolve, window.__llmo_validator_ajv); }
+      function onFailed(e) { done(reject, (e && e.detail) || new Error("script tag injection failed")); }
+      window.addEventListener("__llmo_validator_ajv_ready", onReady, { once: true });
+      window.addEventListener("__llmo_validator_ajv_failed", onFailed, { once: true });
+      document.head.appendChild(s);
+      setTimeout(function () { done(reject, new Error("script tag injection timed out after 15s")); }, 15000);
+    });
+  }
+
+  function pickCallable(mod, pref) {
+    if (!mod) return null;
+    if (pref && typeof mod[pref] === "function") return mod[pref];
+    if (typeof mod.default === "function") return mod.default;
+    if (typeof mod === "function") return mod;
+    if (mod.default && mod.default.default && typeof mod.default.default === "function") return mod.default.default;
+    return null;
+  }
+
+  function initAjv() {
+    return loadAjvDynamic().catch(function (e1) {
+      console.warn("[validator] dynamic import failed, trying script tag", e1);
+      return loadAjvViaScriptTag().catch(function (e2) {
+        console.error("[validator] both AJV load paths failed", e1, e2);
+        throw new Error(
+          "AJV failed to load. dynamic import: " + (e1 && e1.message ? e1.message : e1) +
+          "; script tag: " + (e2 && e2.message ? e2.message : e2)
+        );
+      });
+    }).then(function (mods) {
+      var Ajv = pickCallable(mods.ajvMod, "default") || pickCallable(mods.ajvMod, "Ajv2020");
+      var addFormats = pickCallable(mods.formatsMod, "default");
+      if (!Ajv) throw new Error("AJV module did not expose a callable default export");
+      if (!addFormats) throw new Error("ajv-formats module did not expose a callable default export");
+      var ajv = new Ajv({ allErrors: true, strict: false });
+      addFormats(ajv);
+      ajvValidate = ajv.compile(schema);
+    });
+  }
+
+  // ---- evaluation helpers ------------------------------------------------
+
+  function isUriLike(s) {
+    if (typeof s !== "string") return false;
+    try { var u = new URL(s); return u.protocol === "http:" || u.protocol === "https:"; }
+    catch (_e) { return false; }
+  }
+  function subdomainOrEqual(host, owned) { return host === owned || host.endsWith("." + owned); }
+  function daysBetween(a, b) {
+    var aa = Date.parse(a), bb = Date.parse(b);
+    if (isNaN(aa) || isNaN(bb)) return null;
+    return Math.round((bb - aa) / 86400000);
+  }
+  function b64urlDecode(s) {
+    var std = s.replace(/-/g, "+").replace(/_/g, "/");
+    var pad = std.length % 4;
+    return atob(pad ? std + "=".repeat(4 - pad) : std);
+  }
+  function check(id, cite, desc, status, note) {
+    return { id: id, cite: cite, desc: desc, status: status, note: note || null };
+  }
+
+  function collectClaimUrls(claim) {
+    var urls = [];
+    var t = claim.type;
+    var s = claim.statement;
+    if (!s || typeof s !== "object") return urls;
+    function push(u, tpa) { if (isUriLike(u)) urls.push({ url: u, thirdPartyAllowed: tpa }); }
+    if (t === "canonical_urls") {
+      Object.keys(s).forEach(function (k) { push(s[k], false); });
+    } else if (t === "official_channels") {
+      if (s.community && typeof s.community === "object")
+        Object.keys(s.community).forEach(function (k) { push(s.community[k], true); });
+    } else if (t === "product_facts") {
+      if (Array.isArray(s.products)) s.products.forEach(function (p) { if (p && p.url) push(p.url, false); });
+    } else if (t === "personnel") {
+      if (Array.isArray(s.spokespeople)) s.spokespeople.forEach(function (sp) { if (sp && sp.verification) push(sp.verification, false); });
+    } else if (t === "disavowal") {
+      if (Array.isArray(s.disavowed)) s.disavowed.forEach(function (d) { if (d && d.url) push(d.url, true); });
+    } else if (t === "supersedes") {
+      if (Array.isArray(s.superseded)) s.superseded.forEach(function (x) { if (x && x.url) push(x.url, true); });
+    } else if (t === "pointer") {
+      if (s.url) push(s.url, true);
+    }
+    return urls;
+  }
+
+  function evaluate(doc, schemaOk, schemaErrors, urlContext) {
+    var claims = Array.isArray(doc.claims) ? doc.claims : [];
+    var entity = doc.entity && typeof doc.entity === "object" ? doc.entity : {};
+    var owned = [entity.primary_domain].concat(Array.isArray(entity.aliases) ? entity.aliases : [])
+      .filter(function (d) { return typeof d === "string"; })
+      .map(function (d) { return d.toLowerCase(); });
+    var days = daysBetween(doc.valid_from, doc.valid_until);
+
+    var minimal = [];
+    if (urlContext) {
+      var expected = "https://" + urlContext.primaryDomainHost + WELL_KNOWN;
+      var ok = urlContext.fetchedUrl === expected;
+      minimal.push(check("M1", "§5.1", "served at /.well-known/llmo.json over HTTPS",
+        ok ? "PASS" : "FAIL",
+        ok ? null : "fetched URL was " + urlContext.fetchedUrl + ", expected " + expected));
+    } else {
+      minimal.push(check("M1", "§5.1", "served at /.well-known/llmo.json over HTTPS", "SKIP", "skipped in paste mode"));
+    }
+    minimal.push(check("M2", "§5.1", "document parses as valid JSON", "PASS"));
+    minimal.push(check("M3", "§5.1, §3.1",
+      "required top-level fields present and structurally valid against /spec/v0.1/schema.json",
+      schemaOk ? "PASS" : "FAIL",
+      schemaOk ? null : schemaErrors.length + " schema violation(s); see schema errors below"));
+    var m4 = doc.llmo_version === "0.1";
+    minimal.push(check("M4", "§5.1", 'llmo_version is "0.1"',
+      m4 ? "PASS" : "FAIL", m4 ? null : "llmo_version was " + JSON.stringify(doc.llmo_version)));
+    var m5ok = false, m5note = null;
+    if (typeof doc.valid_from !== "string" || typeof doc.valid_until !== "string") {
+      m5note = "valid_from or valid_until missing or not a string";
+    } else if (days === null) {
+      m5note = "valid_from or valid_until is not a parseable RFC 3339 timestamp";
+    } else if (Date.parse(doc.valid_from) >= Date.parse(doc.valid_until)) {
+      m5note = "valid_from does not precede valid_until";
+    } else if (days > 365) {
+      m5note = "validity window is " + days + " days, exceeds 365";
+    } else {
+      m5ok = true;
+    }
+    minimal.push(check("M5", "§5.1, §3.3",
+      "validity window is <= 365 days and valid_from precedes valid_until",
+      m5ok ? "PASS" : "FAIL", m5note));
+    var m6ok = claims.length === 0 || claims.every(function (c) {
+      return c && typeof c === "object" && typeof c.type === "string" && c.statement && typeof c.statement === "object";
+    });
+    minimal.push(check("M6", "§5.1", "all claims have type and statement",
+      m6ok ? "PASS" : "FAIL", m6ok ? null : "one or more claims is missing type or statement"));
+
+    var minimalOk = minimal.every(function (c) { return c.status === "PASS" || c.status === "SKIP"; });
+
+    var standard = [];
+    var standardOk = false;
+    if (minimalOk) {
+      var cuClaims = claims.filter(function (c) { return c.type === "canonical_urls"; });
+      var ocClaims = claims.filter(function (c) { return c.type === "official_channels"; });
+      standard.push(check("S1", "§5.2", "at least one canonical_urls claim",
+        cuClaims.length >= 1 ? "PASS" : "FAIL",
+        cuClaims.length === 0 ? "no canonical_urls claim found" : null));
+      standard.push(check("S2", "§5.2", "at least one official_channels claim",
+        ocClaims.length >= 1 ? "PASS" : "FAIL",
+        ocClaims.length === 0 ? "no official_channels claim found" : null));
+      if (urlContext) {
+        var primary = typeof entity.primary_domain === "string" ? entity.primary_domain.toLowerCase() : "";
+        var s3ok = primary === urlContext.primaryDomainHost.toLowerCase();
+        standard.push(check("S3", "§5.2", "entity.primary_domain matches serving domain",
+          s3ok ? "PASS" : "FAIL",
+          s3ok ? null : 'entity.primary_domain is "' + primary + '" but document served from "' + urlContext.primaryDomainHost + '"'));
+      } else {
+        standard.push(check("S3", "§5.2", "entity.primary_domain matches serving domain", "SKIP",
+          "skipped in paste mode (no serving domain to compare)"));
+      }
+      var issues = [];
+      claims.forEach(function (c, i) {
+        collectClaimUrls(c).forEach(function (u) {
+          if (u.thirdPartyAllowed) return;
+          try {
+            var host = new URL(u.url).hostname.toLowerCase();
+            var ok = owned.some(function (d) { return subdomainOrEqual(host, d); });
+            if (!ok) issues.push("claim[" + i + "] (" + c.type + "): " + u.url + " resolves to " + host + ", not in owned set {" + (owned.join(", ") || "empty") + "}");
+          } catch (_e) {
+            issues.push("claim[" + i + "] (" + c.type + "): " + u.url + " is not a parseable URL");
+          }
+        });
+      });
+      standard.push(check("S4", "§5.2", "all claim URLs resolve to owned domain or are explicit third-party pointers",
+        issues.length === 0 ? "PASS" : "FAIL", issues.length === 0 ? null : issues.join("; ")));
+      if (days !== null && m5ok) {
+        var s5ok = days <= 180;
+        standard.push(check("S5", "§5.2", "validity window is <= 180 days",
+          s5ok ? "PASS" : "FAIL", s5ok ? null : "validity window is " + days + " days, exceeds 180"));
+      } else {
+        standard.push(check("S5", "§5.2", "validity window is <= 180 days", "FAIL", "validity window unparseable"));
+      }
+      standardOk = standard.every(function (c) { return c.status === "PASS" || c.status === "SKIP"; });
+    }
+
+    var strict = [];
+    var tier = "none";
+    var tierBadge = { label: "None", variant: "none" };
+
+    if (schemaOk && minimalOk && !standardOk) {
+      tier = "minimal"; tierBadge = { label: "Minimal", variant: "pass" };
+    } else if (schemaOk && minimalOk && standardOk) {
+      var x1ok = false, x1note = null;
+      var sig = doc.signature;
+      if (!sig || typeof sig !== "object") {
+        x1note = "document-level signature field is absent";
+      } else {
+        var keys = Object.keys(sig).sort().join(",");
+        if (keys !== "protected,signature") {
+          x1note = "signature object has unexpected keys: " + keys;
+        } else if (typeof sig.protected !== "string" || typeof sig.signature !== "string") {
+          x1note = "signature.protected or signature.signature is not a string";
+        } else if (!B64URL.test(sig.protected) || !B64URL.test(sig.signature)) {
+          x1note = "signature.protected or signature.signature is not base64url";
+        } else {
+          try {
+            var header = JSON.parse(b64urlDecode(sig.protected));
+            if (ALLOWED_ALGS.indexOf(header.alg) < 0) {
+              x1note = "JWS protected header alg is " + JSON.stringify(header.alg) + ", must be ES256, ES384, or EdDSA";
+            } else if (!header.kid) {
+              x1note = "JWS protected header is missing kid";
+            } else {
+              x1ok = true;
+            }
+          } catch (_e) {
+            x1note = "JWS protected header does not decode to valid JSON";
+          }
+        }
+      }
+      strict.push(check("X1", "§5.3, §4.3",
+        "document-level signature field is present and structurally valid (not cryptographically verified)",
+        x1ok ? "PASS" : "FAIL", x1note));
+
+      var x4ok = false;
+      var cuList = claims.filter(function (c) { return c.type === "canonical_urls"; });
+      for (var i = 0; i < cuList.length && !x4ok; i++) {
+        var st = cuList[i].statement || {};
+        var vals = Object.keys(st).map(function (k) { return st[k]; });
+        for (var j = 0; j < vals.length; j++) {
+          if (!isUriLike(vals[j])) continue;
+          var h = new URL(vals[j]).hostname.toLowerCase();
+          if (owned.some(function (d) { return subdomainOrEqual(h, d); })) { x4ok = true; break; }
+        }
+      }
+      strict.push(check("X4", "§5.3",
+        "at least one canonical_urls claim has a URL on the entity's owned domain",
+        x4ok ? "PASS" : "FAIL", x4ok ? null : "no canonical_urls URL matches primary_domain or aliases"));
+
+      // X2 / X3: deferred in URL mode (resolved by caller); SKIP in paste mode.
+      if (urlContext) {
+        strict.push({ id: "X2", cite: "§5.3", desc: "JWKS retrievable at /.well-known/llmo-keys.json", status: "DEFERRED", note: null });
+        strict.push({ id: "X3", cite: "§5.3", desc: "JWKS Cache-Control max-age is <= 86400", status: "DEFERRED", note: null });
+      } else {
+        strict.push(check("X2", "§5.3", "JWKS retrievable at /.well-known/llmo-keys.json", "SKIP", "skipped in paste mode"));
+        strict.push(check("X3", "§5.3", "JWKS Cache-Control max-age is <= 86400", "SKIP", "skipped in paste mode"));
+      }
+
+      var docInternalOk = x1ok && x4ok;
+      if (docInternalOk) {
+        if (urlContext) {
+          tier = "strict-pending-jwks"; tierBadge = { label: "Strict (evaluating JWKS)", variant: "partial" };
+        } else {
+          tier = "strict-paste"; tierBadge = { label: "Strict (partial, paste mode)", variant: "partial" };
+        }
+      } else {
+        tier = "standard"; tierBadge = { label: "Standard", variant: "pass" };
+      }
+    }
+
+    if (!schemaOk) { tier = "none"; tierBadge = { label: "None", variant: "none" }; }
+
+    var warnings = [];
+    if (schemaOk && m5ok && days !== null && days > 180 && days <= 365) {
+      warnings.push({ id: "W1", cite: "§5.4",
+        desc: "validity window is " + days + " days, exceeds the 180-day Standard-tier threshold (conformant but discouraged)" });
+    }
+    claims.forEach(function (c, i) {
+      if (c.type !== "personnel") return;
+      var sps = c.statement && Array.isArray(c.statement.spokespeople) ? c.statement.spokespeople : [];
+      sps.forEach(function (sp) {
+        if (!sp || !sp.verification) {
+          warnings.push({ id: "W2", cite: "§5.4",
+            desc: 'personnel spokesperson "' + (sp && sp.name ? sp.name : "(unnamed)") + '" in claim[' + i + "] has no verification URL" });
+        }
+      });
+    });
+
+    var confidenceInfo = [];
+    claims.forEach(function (c, i) {
+      var conf = (c && c.confidence) || "authoritative";
+      if (conf !== "authoritative") {
+        confidenceInfo.push({ index: i, claim_id: (c && c.claim_id) || null, confidence: conf });
+      }
+    });
+
+    var signatureReport = {
+      document_level: doc.signature ? "present" : "absent",
+      per_claim: claims.map(function (c, i) {
+        return { index: i, claim_id: (c && c.claim_id) || null, type: (c && c.type) || null, signature: c && c.signature ? "present" : "absent" };
+      })
+    };
+
+    return {
+      minimal: minimal, standard: standard, strict: strict,
+      warnings: warnings, confidenceInfo: confidenceInfo,
+      signatureReport: signatureReport, tier: tier, tierBadge: tierBadge
+    };
+  }
+
+  function finalizeStrictForUrlMode(ev, urlContext) {
+    var jwksUrl = "https://" + urlContext.primaryDomainHost + "/.well-known/llmo-keys.json";
+    return fetch(jwksUrl, { cache: "no-store" }).then(function (resp) {
+      var x2, x2n, x3, x3n;
+      if (resp.status === 404) {
+        x2 = "FAIL"; x2n = "No JWKS found at /.well-known/llmo-keys.json. §5.3 requires strict-tier documents to make the JWKS retrievable at this path.";
+        x3 = "SKIP"; x3n = "skipped because JWKS fetch failed";
+        return applyX23(ev, x2, x2n, x3, x3n);
+      }
+      if (!resp.ok) {
+        x2 = "FAIL"; x2n = "JWKS fetch returned HTTP " + resp.status + ".";
+        x3 = "SKIP"; x3n = "skipped because JWKS fetch failed";
+        return applyX23(ev, x2, x2n, x3, x3n);
+      }
+      var cc = resp.headers.get("Cache-Control") || "";
+      return resp.clone().json().then(function () {
+        var x2 = "PASS", x2n = null, x3, x3n;
+        var m = /max-age\s*=\s*(\d+)/i.exec(cc);
+        if (m) {
+          var age = parseInt(m[1], 10);
+          if (age <= 86400) { x3 = "PASS"; x3n = null; }
+          else { x3 = "FAIL"; x3n = "Cache-Control max-age is " + age + ", exceeds 86400."; }
+        } else {
+          x3 = "FAIL";
+          x3n = "§5.3 requires the JWKS be served with Cache-Control: max-age <= 86400. The response did not include a max-age directive.";
+        }
+        return applyX23(ev, x2, x2n, x3, x3n);
+      }).catch(function () {
+        return applyX23(ev, "FAIL", "The response at /.well-known/llmo-keys.json is not valid JSON.", "SKIP", "skipped because JWKS body is not JSON");
+      });
+    }).catch(function (err) {
+      return applyX23(ev, "SKIP",
+        "Could not fetch JWKS due to network or CORS restriction. This is not necessarily a spec violation; the JWKS may exist but not permit cross-origin requests from validate.llmo.org. (" + (err && err.message ? err.message : err) + ")",
+        "SKIP", "skipped because JWKS fetch did not resolve");
+    });
+  }
+
+  function applyX23(ev, x2, x2n, x3, x3n) {
+    ev.strict = ev.strict.map(function (c) {
+      if (c.id === "X2") return check("X2", "§5.3", "JWKS retrievable at /.well-known/llmo-keys.json", x2, x2n);
+      if (c.id === "X3") return check("X3", "§5.3", "JWKS Cache-Control max-age is <= 86400", x3, x3n);
+      return c;
+    });
+    var x1 = ev.strict.find(function (c) { return c.id === "X1"; });
+    var x4 = ev.strict.find(function (c) { return c.id === "X4"; });
+    var docOk = x1.status === "PASS" && x4.status === "PASS";
+    if (docOk) {
+      if (x2 === "PASS" && x3 === "PASS") { ev.tier = "strict"; ev.tierBadge = { label: "Strict", variant: "pass" }; }
+      else if (x2 === "SKIP") { ev.tier = "strict-partial-cors"; ev.tierBadge = { label: "Strict (partial, CORS)", variant: "partial" }; }
+      else { ev.tier = "standard"; ev.tierBadge = { label: "Standard", variant: "pass" }; }
+    }
+    return ev;
+  }
+
+  // ---- paste + URL entry points -----------------------------------------
+
+  function runPasteValidation(text) {
+    var base = baseShell("pasted input", "paste");
+    var doc;
+    try {
+      doc = JSON.parse(text);
+      base.jsonParseOk = true;
+    } catch (err) {
+      base.parseError = describeJsonParseError(text, err);
+      base.tierBadge = { label: "None (parse error)", variant: "fail" };
+      render(base);
+      return;
+    }
+    var ok = ajvValidate(doc);
+    var schemaErrors = ok ? [] : (ajvValidate.errors || []).map(function (e) {
+      return { path: e.instancePath || "(root)", message: e.message || "(no message)", schemaPath: e.schemaPath };
+    });
+    var ev = evaluate(doc, ok, schemaErrors, null);
+    base.schemaErrors = schemaErrors;
+    base.checks = { minimal: ev.minimal, standard: ev.standard, strict: ev.strict };
+    base.warnings = ev.warnings;
+    base.confidenceInfo = ev.confidenceInfo;
+    base.signatureReport = ev.signatureReport;
+    base.tier = ev.tier; base.tierBadge = ev.tierBadge;
+    render(base);
+  }
+
+  function runUrlValidation(raw) {
+    if (!raw) return;
+    var scheme = /^https?:\/\//i.exec(raw);
+    if (!scheme) {
+      var prepended = "https://" + raw;
+      showUrlConfirm(raw, prepended);
+      return;
+    }
+    if (scheme[0].toLowerCase() === "http://") {
+      var b = baseShell(raw, "url");
+      b.parseError = "The URL starts with http:// but §2.3 of the spec requires HTTPS. Retry with https://.";
+      b.tierBadge = { label: "None (HTTPS required)", variant: "fail" };
+      render(b);
+      return;
+    }
+    var host;
+    try { host = new URL(raw).hostname; }
+    catch (_e) {
+      var b2 = baseShell(raw, "url");
+      b2.parseError = 'The input "' + raw + '" is not a valid URL. Enter a domain such as example.com.';
+      b2.tierBadge = { label: "None (invalid URL)", variant: "fail" };
+      render(b2);
+      return;
+    }
+    fetchAndValidate(host);
+  }
+
+  function showUrlConfirm(original, prepended) {
+    var banner = document.getElementById("url-confirm");
+    document.getElementById("url-confirm-msg").textContent =
+      'The input "' + original + '" has no scheme. Did you mean ' + prepended + "?";
+    banner.hidden = false; banner.classList.remove("hidden");
+    var btn = document.getElementById("btn-url-confirm-yes");
+    btn.textContent = "Yes, use " + prepended;
+    // replace listener idempotently
+    btn.onclick = function () {
+      hideUrlConfirm();
+      try { fetchAndValidate(new URL(prepended).hostname); } catch (_e) {}
+    };
+  }
+  function hideUrlConfirm() {
+    var banner = document.getElementById("url-confirm");
+    banner.hidden = true; banner.classList.add("hidden");
+  }
+
+  function fetchAndValidate(host) {
+    var fetchedUrl = "https://" + host + WELL_KNOWN;
+    var base = baseShell(fetchedUrl, "url");
+    fetch(fetchedUrl, { cache: "no-store", redirect: "follow" }).then(function (resp) {
+      if (resp.status === 404) {
+        base.parseError =
+          "No document found at " + fetchedUrl + ". The server returned HTTP 404. " +
+          "Verify the document exists at exactly that path; §2.1 of the spec requires the canonical discovery path /.well-known/llmo.json.";
+        base.tierBadge = { label: "None (404)", variant: "fail" };
+        render(base); return;
+      }
+      if (!resp.ok) {
+        base.parseError = "The request to " + fetchedUrl + " returned HTTP " + resp.status + ". Verify the document exists at that path and is served over HTTPS with a 2xx response.";
+        base.tierBadge = { label: "None (HTTP " + resp.status + ")", variant: "fail" };
+        render(base); return;
+      }
+      var ct = (resp.headers.get("Content-Type") || "").toLowerCase();
+      return resp.text().then(function (text) {
+        if (ct.indexOf("text/html") >= 0) {
+          base.parseError =
+            "The response from " + fetchedUrl + " has Content-Type " + ct + ", not application/json. " +
+            "This usually means the server is serving its website homepage at that path instead of a JSON document, which indicates the llmo.json has not been deployed. " +
+            "Verify the file exists and is served with Content-Type application/llmo+json or application/json per §2.2.";
+          base.tierBadge = { label: "None (HTML response)", variant: "fail" };
+          render(base); return;
+        }
+        var doc;
+        try { doc = JSON.parse(text); base.jsonParseOk = true; }
+        catch (err) {
+          base.parseError = describeJsonParseError(text, err);
+          base.tierBadge = { label: "None (parse error)", variant: "fail" };
+          render(base); return;
+        }
+        var ok = ajvValidate(doc);
+        var schemaErrors = ok ? [] : (ajvValidate.errors || []).map(function (e) {
+          return { path: e.instancePath || "(root)", message: e.message || "(no message)", schemaPath: e.schemaPath };
+        });
+        var urlContext = { fetchedUrl: fetchedUrl, primaryDomainHost: host };
+        var ev = evaluate(doc, ok, schemaErrors, urlContext);
+        Promise.resolve(ev.tier === "strict-pending-jwks" ? finalizeStrictForUrlMode(ev, urlContext) : ev).then(function (finalEv) {
+          base.schemaErrors = schemaErrors;
+          base.checks = { minimal: finalEv.minimal, standard: finalEv.standard, strict: finalEv.strict };
+          base.warnings = finalEv.warnings;
+          base.confidenceInfo = finalEv.confidenceInfo;
+          base.signatureReport = finalEv.signatureReport;
+          base.tier = finalEv.tier; base.tierBadge = finalEv.tierBadge;
+          render(base);
+        });
+      });
+    }).catch(function (err) {
+      base.parseError =
+        "The request to " + fetchedUrl + " failed before a response was received. " +
+        "This could indicate a DNS failure, a network connectivity issue, a TLS handshake failure, " +
+        "that the domain does not exist, or that the browser blocked the request for CORS reasons. " +
+        "If you have the document locally, download it and paste its contents into the textarea above. " +
+        "Underlying error: " + (err && err.message ? err.message : err);
+      base.tierBadge = { label: "None (network or CORS)", variant: "fail" };
+      render(base);
+    });
+  }
+
+  function baseShell(source, mode) {
+    return {
+      source: source, mode: mode, jsonParseOk: false, parseError: null,
+      schemaErrors: [], checks: { minimal: [], standard: [], strict: [] },
+      warnings: [], confidenceInfo: [], signatureReport: { document_level: "absent", per_claim: [] },
+      tier: "none", tierBadge: { label: "None", variant: "none" }
+    };
+  }
+
+  function describeJsonParseError(text, err) {
+    var msg = (err && err.message) || "parse error";
+    var m = /position\s+(\d+)/i.exec(msg);
+    var loc = "";
+    if (m) {
+      var pos = parseInt(m[1], 10);
+      var before = text.slice(0, pos);
+      var line = (before.match(/\n/g) || []).length + 1;
+      var col = pos - (before.lastIndexOf("\n") + 1) + 1;
+      var bad = text.charAt(pos) || "(end of input)";
+      loc = " at line " + line + ", column " + col + ' (character ' + pos + ', "' + bad + '")';
+    }
+    return "The input could not be parsed as JSON.\n" +
+      "Parse error" + loc + ": " + msg + ".\n" +
+      "Verify that your llmo.json is syntactically valid JSON. You can validate JSON syntax independently at jsonlint.com or with `jq . < your-file.json` on the command line.";
+  }
+
+  // ---- rendering --------------------------------------------------------
+
+  function el(tag, opts, children) {
+    var e = document.createElement(tag);
+    if (opts) {
+      if (opts.cls) e.className = opts.cls;
+      if (opts.text != null) e.textContent = opts.text;
+      if (opts.html != null) e.innerHTML = opts.html;
+      if (opts.id) e.id = opts.id;
+      if (opts.attrs) Object.keys(opts.attrs).forEach(function (k) { e.setAttribute(k, opts.attrs[k]); });
+    }
+    if (children) children.forEach(function (c) { if (c) e.appendChild(c); });
+    return e;
+  }
+
+  function markFor(status) {
+    if (status === "PASS") return { ch: "\u2713", cls: "mark-pass" }; // ✓
+    if (status === "FAIL") return { ch: "\u2717", cls: "mark-fail" }; // ✗
+    if (status === "SKIP" || status === "DEFERRED") return { ch: "\u2298", cls: "mark-skip" }; // ⊘
+    if (status === "WARN") return { ch: "\u26a0", cls: "mark-warn" }; // ⚠
+    return { ch: "", cls: "" };
+  }
+
+  function renderChecks(checks) {
+    var ul = el("ul", { cls: "checks" });
+    if (!checks || checks.length === 0) {
+      ul.appendChild(el("li", { cls: "muted", text: "Not evaluated (prior tier did not pass)." }));
+      return ul;
+    }
+    checks.forEach(function (c) {
+      var mk = markFor(c.status);
+      var li = el("li");
+      li.appendChild(el("span", { cls: "mark " + mk.cls, text: mk.ch }));
+      li.appendChild(el("span", { cls: "cite", text: "[" + c.status + "] " + c.cite + " (" + c.id + "): " }));
+      li.appendChild(el("span", { text: c.desc }));
+      if (c.note) {
+        li.appendChild(el("div", { cls: "note", text: "note: " + c.note }));
+      }
+      ul.appendChild(li);
+    });
+    return ul;
+  }
+
+  function tierExplanation(tierKey) {
+    if (tierKey === "strict-paste" || tierKey === "strict-partial-cors") {
+      return "The document passes every Strict-tier check that does not require a live server fetch. X2 and X3 (JWKS retrievability and Cache-Control) could not be evaluated in this mode.";
+    }
+    return null;
+  }
+
+  function render(result) {
+    var section = document.getElementById("results-section");
+    section.hidden = false; section.classList.remove("hidden");
+    var body = document.getElementById("results-body");
+    body.innerHTML = "";
+
+    // tier badge
+    var badgeWrap = el("div");
+    var badge = el("span", {
+      cls: "tier-badge tier-" + (result.tierBadge.variant || "none"),
+      text: result.tierBadge.label
+    });
+    badgeWrap.appendChild(badge);
+    var sub = tierExplanation(result.tier);
+    if (sub) badgeWrap.appendChild(el("div", { cls: "tier-sub", text: sub }));
+    badgeWrap.appendChild(el("div", { cls: "tier-sub", text: "Source: " + result.source }));
+    body.appendChild(badgeWrap);
+
+    if (result.parseError) {
+      body.appendChild(el("div", { cls: "errbox", text: result.parseError }));
+      body.appendChild(renderPlainTextBlock(result));
+      return;
+    }
+
+    body.appendChild(el("h3", { text: "Minimal tier (§5.1)" }));
+    body.appendChild(renderChecks(result.checks.minimal));
+    body.appendChild(el("h3", { text: "Standard tier (§5.2)" }));
+    body.appendChild(renderChecks(result.checks.standard));
+    body.appendChild(el("h3", { text: "Strict tier (§5.3)" }));
+    body.appendChild(renderChecks(result.checks.strict));
+
+    if (result.schemaErrors && result.schemaErrors.length > 0) {
+      body.appendChild(el("h3", { text: "Schema violations" }));
+      var ul = el("ul", { cls: "plain" });
+      result.schemaErrors.forEach(function (e) {
+        var li = el("li");
+        var path = el("code", { text: e.path || "(root)" });
+        li.appendChild(path);
+        li.appendChild(document.createTextNode(": " + e.message));
+        ul.appendChild(li);
+      });
+      body.appendChild(ul);
+    }
+
+    body.appendChild(el("h3", { text: "Warnings (§5.4)" }));
+    if (result.warnings.length === 0) {
+      body.appendChild(el("p", { cls: "muted", text: "None." }));
+    } else {
+      var wul = el("ul", { cls: "plain" });
+      result.warnings.forEach(function (w) {
+        var mk = markFor("WARN");
+        var li = el("li");
+        li.appendChild(el("span", { cls: "mark " + mk.cls, text: mk.ch }));
+        li.appendChild(el("span", { cls: "cite", text: "[WARN] " + w.cite + " (" + w.id + "): " }));
+        li.appendChild(el("span", { text: w.desc }));
+        wul.appendChild(li);
+      });
+      body.appendChild(wul);
+    }
+
+    body.appendChild(el("h3", { text: "Confidence annotations (informational, per §3.7)" }));
+    if (result.confidenceInfo.length === 0) {
+      body.appendChild(el("p", { cls: "muted", text: "All claims carry authoritative confidence (default)." }));
+    } else {
+      var cul = el("ul", { cls: "plain" });
+      result.confidenceInfo.forEach(function (c) {
+        var label = c.claim_id ? '"' + c.claim_id + '" (index ' + c.index + ")" : "index " + c.index;
+        cul.appendChild(el("li", { text: "claim " + label + ": " + c.confidence }));
+      });
+      body.appendChild(cul);
+      body.appendChild(el("p", { cls: "muted", text: "Per §3.7: provisional confidence should be used sparingly. No action required; this is informational." }));
+    }
+
+    body.appendChild(el("h3", { text: "Signature presence" }));
+    body.appendChild(el("p", { html: "Document-level: <strong>" + escapeHtml(result.signatureReport.document_level) + "</strong>" }));
+    if (result.signatureReport.per_claim.length > 0) {
+      var pul = el("ul", { cls: "plain" });
+      result.signatureReport.per_claim.forEach(function (pc) {
+        var lbl = pc.claim_id ? '"' + pc.claim_id + '"' : "index " + pc.index;
+        pul.appendChild(el("li", { text: "claim " + lbl + " (" + pc.type + "): " + pc.signature }));
+      });
+      body.appendChild(pul);
+    } else {
+      body.appendChild(el("p", { cls: "muted", text: "No claims." }));
+    }
+
+    body.appendChild(renderPlainTextBlock(result));
+  }
+
+  function renderPlainTextBlock(result) {
+    var wrap = el("div");
+    wrap.appendChild(el("h3", { text: "Plain-text report" }));
+    var row = el("div", { cls: "copyrow" });
+    var btn = el("button", { cls: "secondary", text: "Copy plain-text report", attrs: { type: "button" } });
+    var status = el("span", { cls: "copy-status", text: "" });
+    btn.addEventListener("click", function () {
+      var text = buildPlainText(result);
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(function () {
+          status.textContent = "Copied.";
+          setTimeout(function () { status.textContent = ""; }, 2000);
+        }, function () {
+          status.textContent = "Copy failed. Select the text manually.";
+          setTimeout(function () { status.textContent = ""; }, 3000);
+        });
+      } else {
+        status.textContent = "Clipboard unavailable. Select the text manually.";
+      }
+    });
+    row.appendChild(btn);
+    row.appendChild(status);
+    wrap.appendChild(row);
+    wrap.appendChild(el("pre", { cls: "report", text: buildPlainText(result) }));
+    return wrap;
+  }
+
+  function buildPlainText(result) {
+    var lines = [];
+    lines.push("LLMO Conformance Report");
+    lines.push("Source: " + result.source);
+    lines.push("Tier achieved: " + result.tierBadge.label);
+    lines.push("");
+    if (!result.jsonParseOk) {
+      lines.push("JSON parse: FAIL");
+      lines.push(result.parseError || "(no detail)");
+      return lines.join("\n");
+    }
+    function section(name, rows) {
+      if (!rows || rows.length === 0) return;
+      var overall = rows.every(function (c) { return c.status === "PASS" || c.status === "SKIP"; }) ? "PASS" : "FAIL";
+      lines.push(name + ": " + overall);
+      rows.forEach(function (c) {
+        lines.push("  [" + c.status + "] " + c.cite + " (" + c.id + "): " + c.desc);
+        if (c.note) lines.push("         note: " + c.note);
+      });
+      lines.push("");
+    }
+    section("Minimal tier", result.checks.minimal);
+    section("Standard tier", result.checks.standard);
+    section("Strict tier", result.checks.strict);
+    if (result.schemaErrors && result.schemaErrors.length > 0) {
+      lines.push("Schema violations:");
+      result.schemaErrors.forEach(function (e) { lines.push("  " + (e.path || "(root)") + ": " + e.message + " (" + e.schemaPath + ")"); });
+      lines.push("");
+    }
+    lines.push("Warnings: " + (result.warnings.length === 0 ? "none" : ""));
+    result.warnings.forEach(function (w) { lines.push("  [WARN] " + w.cite + " (" + w.id + "): " + w.desc); });
+    lines.push("");
+    lines.push("Confidence annotations (informational, per §3.7):");
+    if (result.confidenceInfo.length === 0) {
+      lines.push("  All claims carry authoritative confidence (default).");
+    } else {
+      result.confidenceInfo.forEach(function (c) {
+        var lbl = c.claim_id ? '"' + c.claim_id + '" (index ' + c.index + ")" : "index " + c.index;
+        lines.push("  - claim " + lbl + ": " + c.confidence);
+      });
+      lines.push("  Per §3.7: provisional confidence should be used sparingly. No action required; this is informational.");
+    }
+    lines.push("");
+    lines.push("Signature presence:");
+    lines.push("  Document-level: " + result.signatureReport.document_level);
+    if (result.signatureReport.per_claim.length === 0) {
+      lines.push("  Per-claim: no claims");
+    } else {
+      result.signatureReport.per_claim.forEach(function (pc) {
+        var lbl = pc.claim_id ? '"' + pc.claim_id + '"' : "index " + pc.index;
+        lines.push("  Per-claim " + lbl + " (" + pc.type + "): " + pc.signature);
+      });
+    }
+    return lines.join("\n");
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c];
+    });
+  }
+})();
+</script>
+
+</body>
+</html>
